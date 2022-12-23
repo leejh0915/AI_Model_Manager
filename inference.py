@@ -1,93 +1,145 @@
-# Detection, Keypoint, Classification 등 다양한 알고리즘에 inference가 가능하도록 설계할 예정입니다
+# 훈련시킨 모델을 가지고 inference할 class들에 대한 모듈
+# 현재 trt,torch inference를 제공중이며 추후 tensorflow와 tflite 관련 클래스도 추가예정
 
-import argparse
+import numpy as np
 import torch
-from util.util import load_module_func
+import cv2
+import matplotlib.pyplot as plt
+from time import time
+import pycuda.driver as cuda
+import pycuda.autoinit
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+import util.trt_func as trt_func
 
-    # inference options
-    parser.add_argument('--network', default='algorithm_list.simple_resnet.SimpleResNet', help='path to load model')
-    parser.add_argument('--weight_path', default='/home/jhyeok.lee/workspace/prevmodels/model_compression/resnet.pt',
-                        help='path to load model')
+class trt_inference():
+    def __init__(self, args, weight_path, dataset):
+        self.mode = args.mode
+        self.batch = args.batch_size
+        self.ch_in = args.img_ch
+        self.h_in = args.img_h_size
+        self.w_in = args.img_w_size
+        self.weight_path = weight_path
+        self.dataset = dataset  # test_loader
 
-    # compare inference options
-    parser.add_argument('--compare_mode', type=bool, default=False, help='compare to models')
-    parser.add_argument('--compare_network', default='algorithm_list.simple_resnet.SimpleResNet',
-                        help='path to load model')
-    parser.add_argument('--compare_weight_path',
-                        default='/home/jhyeok.lee/workspace/prevmodels/model_compression/resnet.pt',
-                        help='path to load model')
+    def run(self):
+        if self.mode == 'classification':
+            # batch, ch_in, h_in, w_in = self.batch_size, self.img_ch, self.img_h_size, self.img_w_size
 
-    # select dataset
-    parser.add_argument('--select_dataset', default='dataset.cifar10.cifar10', help='path to load model')
+            with trt_func.get_engine(self.weight_path) as engine, engine.create_execution_context() as context:
+                buffers = trt_func.allocate_buffers(engine, batch_size=self.batch)
+                # binding input shape
+                context.set_binding_shape(0, (self.batch, self.ch_in, self.h_in, self.w_in))
 
-    args = parser.parse_args()
-    import_network = load_module_func(args.network)  # network_import
-    import_dataset = load_module_func(args.select_dataset)  # dataset_import
+                inputs, outputs, bindings, stream = buffers
 
-    test_dataset, test_loader = import_dataset().set_test_dataset()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                correct = 0
+                total = 0
 
-    
+                start = time()
+                for images, labels in self.dataset:
+                    img = images.numpy().astype(np.float16)
+                    lb = labels.numpy()
+                    inputs[0].host = np.ascontiguousarray(img)  # ascontiguousarray는 빠르게 데이터를 부르는 역할을 함(결과 자체가 다르진 않음)
 
-    if args.compare_mode:
-        # 해당 모델들을 평가 및 비교합니다
-        model = import_network().set_networks()
-        model.to(device)
-        model.load_state_dict(torch.load(args.weight_path))
+                    trt_outputs = trt_func.do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs,
+                                                        stream=stream)
 
-        with torch.no_grad():
-            correct = 0
-            total = 0
+                    predicted = trt_outputs[0].tolist().index(np.max(trt_outputs[0]))
+                    total += labels.size(0)
+                    correct += (predicted == lb).sum().item()
 
-            for images, labels in test_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                    # print('numpy:{}'.format(trt_outputs[0]))
+                    # print('list:{}'.format(trt_outputs[0].tolist()))
+                    # print('pred: {}'.format(predicted))
+                    # print('lb: {}'.format(lb))
 
-            print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
+                end = time()
+                time_res = (end - start)
 
-        import_compare_network = load_module_func(args.compare_network)  # network_import
+                print("time_res: ", time_res)
+                print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
 
-        compare_model = import_compare_network().set_networks()
-        compare_model.to(device)
-        compare_model.load_state_dict(torch.load(args.compare_weight_path))
+            return 0
+        elif self.mode == 'detection':
+            return print('준비중')
+        elif self.mode == 'pose estimation':
+            return print('준비중')
+        else:
+            return print('옳바른 정보가 아닙니다')
 
-        with torch.no_grad():
-            compare_correct = 0
-            compare_total = 0
 
-            for images, labels in test_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = compare_model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                compare_total += labels.size(0)
-                compare_correct += (predicted == labels).sum().item()
+class torch_inference():
+    def __init__(self, args, dataset, weight_path, network):
+        self.mode = args.mode
+        self.batch = args.batch_size
+        self.ch_in = args.img_ch
+        self.h_in = args.img_h_size
+        self.w_in = args.img_w_size
+        self.weight_path = weight_path
+        self.dataset = dataset  # test_loader
+        self.network = network  # import_network().set_networks()
 
-            print(
-                'Accuracy of the compare_model on the test images: {} %'.format(100 * compare_correct / compare_total))
+    def run(self):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    else:
-        # 해당 모델을 평가합니다
-        model = import_network().set_networks()
-        model.to(device)
-        model.load_state_dict(torch.load(args.weight_path))
+        if self.mode == 'classification':
+            model = self.network
+            model.to(device)
+            model.load_state_dict(torch.load(self.weight_path))
 
-        with torch.no_grad():
-            correct = 0
-            total = 0
-            for images, labels in test_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+            with torch.no_grad():
+                correct = 0
+                total = 0
 
-            print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
+                start = time()
+
+                for images, labels in self.dataset:
+                    images = images.to(device)
+                    labels = labels.to(device)
+                    outputs = model(images)
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+
+                end = time()
+                time_res = (end - start)
+
+                print("time_res: ", time_res)
+                print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
+
+        elif self.mode == 'detection':
+            return print('준비중')
+        elif self.mode == 'pose estimation':
+            return print('준비중')
+        else:
+            return print('옳바른 정보가 아닙니다')
+
+
+class tf_inference():
+    def __init__(self, mode, args, dataset, weight_path, network):
+        self.mode = mode
+        self.batch = args.batch_size
+        self.ch_in = args.img_ch
+        self.h_in = args.img_h_size
+        self.w_in = args.img_w_size
+        self.weight_path = weight_path
+        self.dataset = dataset  # test_loader
+        self.network = network  # import_network().set_networks()
+
+    def run(self):
+        pass
+
+
+class tflite_inference():
+    def __init__(self, mode, args, dataset, weight_path, network):
+        self.mode = mode
+        self.batch = args.batch_size
+        self.ch_in = args.img_ch
+        self.h_in = args.img_h_size
+        self.w_in = args.img_w_size
+        self.weight_path = weight_path
+        self.dataset = dataset  # test_loader
+        self.network = network  # import_network().set_networks()
+
+    def run(self):
+        pass

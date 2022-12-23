@@ -3,11 +3,8 @@ import pycuda.driver as cuda
 import pycuda.autoinit
 
 TRT_LOGGER = trt.Logger()
-
-
 def GiB(val):
     return val * 1 << 30
-
 
 # Simple helper data class that's a little nicer to use than a 2-tuple.
 class HostDeviceMem(object):
