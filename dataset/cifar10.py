@@ -18,12 +18,12 @@ class cifar10:
             transforms.ToTensor()])
 
         # CIFAR-10 dataset
-        self.train_dataset = torchvision.datasets.CIFAR10(root='/home/jhyeok.lee/workspace/data',
+        self.train_dataset = torchvision.datasets.CIFAR10(root='dataset/data',
                                                           train=True,
                                                           transform=transform,
                                                           download=True)
 
-        self.test_dataset = torchvision.datasets.CIFAR10(root='/home/jhyeok.lee/workspace/data',
+        self.test_dataset = torchvision.datasets.CIFAR10(root='dataset/data',
                                                          train=False,
                                                          transform=transforms.ToTensor())
 
