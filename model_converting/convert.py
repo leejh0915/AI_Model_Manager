@@ -5,7 +5,7 @@ import argparse
 from torchsummaryX import summary
 
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
-from util.util import load_module_func
+from utils.util import load_module_func
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

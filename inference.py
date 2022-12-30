@@ -2,7 +2,7 @@
 
 import argparse
 import torch
-from util.util import load_module_func
+from utils.util import load_module_func
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -29,6 +29,8 @@ if __name__ == '__main__':
 
     test_dataset, test_loader = import_dataset().set_test_dataset()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    
 
     if args.compare_mode:
         # 해당 모델들을 평가 및 비교합니다
