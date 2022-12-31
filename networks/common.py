@@ -1,4 +1,5 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+#Reference https://github.com/ultralytics/yolov5
+#YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 Common modules
 """
@@ -329,7 +330,7 @@ class DetectMultiBackend(nn.Module):
         #   TensorFlow Lite:                *.tflite
         #   TensorFlow Edge TPU:            *_edgetpu.tflite
         #   PaddlePaddle:                   *_paddle_model
-        from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
+        # from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
 
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
@@ -471,27 +472,6 @@ class DetectMultiBackend(nn.Module):
                     meta_file = model.namelist()[0]
                     meta = ast.literal_eval(model.read(meta_file).decode("utf-8"))
                     stride, names = int(meta['stride']), meta['names']
-        elif tfjs:  # TF.js
-            raise NotImplementedError('ERROR: YOLOv5 TF.js inference is not supported')
-        elif paddle:  # PaddlePaddle
-            LOGGER.info(f'Loading {w} for PaddlePaddle inference...')
-            check_requirements('paddlepaddle-gpu' if cuda else 'paddlepaddle')
-            import paddle.inference as pdi
-            if not Path(w).is_file():  # if not *.pdmodel
-                w = next(Path(w).rglob('*.pdmodel'))  # get *.pdmodel file from *_paddle_model dir
-            weights = Path(w).with_suffix('.pdiparams')
-            config = pdi.Config(str(w), str(weights))
-            if cuda:
-                config.enable_use_gpu(memory_pool_init_size_mb=2048, device_id=0)
-            predictor = pdi.create_predictor(config)
-            input_handle = predictor.get_input_handle(predictor.get_input_names()[0])
-            output_names = predictor.get_output_names()
-        elif triton:  # NVIDIA Triton Inference Server
-            LOGGER.info(f'Using {w} as Triton Inference Server...')
-            check_requirements('tritonclient[all]')
-            from utils.triton import TritonRemoteModel
-            model = TritonRemoteModel(url=w)
-            nhwc = model.runtime.startswith("tensorflow")
         else:
             raise NotImplementedError(f'ERROR: {w} is not a supported format')
 
@@ -858,3 +838,5 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+
+#----------------------------------------experimential---------------------------------------------------

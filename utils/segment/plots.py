@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from .. import threaded
+from yolov5.utils import threaded
 from ..general import xywh2xyxy
 from ..plots import Annotator, colors
 
